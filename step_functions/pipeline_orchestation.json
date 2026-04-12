@@ -1,0 +1,134 @@
+{
+    "Comment": "Air Quality Pipeline: Bronze API → Silver → DQ Check → Gold → SNS",
+    "StartAt": "Run Bronze API to Silver",
+    "States": {
+  
+      "Run Bronze API to Silver": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "bronze_to_silver_statistics_api",
+          "Arguments": {
+            "--bronze_database": "glue-pipeline-bronze-dev",
+            "--bronze_table": "api_raw",
+            "--silver_bucket": "data-pipeline-silver-ap-dev",
+            "--silver_database": "glue-pipeline-silver-dev",
+            "--stale_hours": "48"
+          }
+        },
+        "ResultPath": "$.bronze_result",
+        "Next": "Run DQ Check Silver",
+        "Catch": [
+          {
+            "ErrorEquals": ["States.ALL"],
+            "Next": "Notify Failure",
+            "ResultPath": "$.error"
+          }
+        ]
+      },
+  
+      "Run DQ Check Silver": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+          "FunctionName": "arn:aws:lambda:ap-southeast-2:600868920829:function:dq_check_silver",
+          "Payload": {
+            "layer": "silver",
+            "table": "fact_aqi"
+          }
+        },
+        "ResultSelector": {
+          "quality_passed.$": "$.Payload.quality_passed",
+          "checks_passed.$": "$.Payload.checks_passed",
+          "checks_total.$": "$.Payload.checks_total"
+        },
+        "ResultPath": "$.dq_result",
+        "Next": "DQ Passed?",
+        "Catch": [
+          {
+            "ErrorEquals": ["States.ALL"],
+            "Next": "Notify Failure",
+            "ResultPath": "$.error"
+          }
+        ]
+      },
+  
+      "DQ Passed?": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.dq_result.quality_passed",
+            "BooleanEquals": true,
+            "Next": "Run Silver to Gold"
+          }
+        ],
+        "Default": "Notify DQ Failure"
+      },
+  
+      "Run Silver to Gold": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "silver_to_gold_analytics",
+          "Arguments": {
+            "--silver_database": "glue-pipeline-silver-dev",
+            "--gold_bucket": "data-pipeline-gold-ap-dev",
+            "--gold_database": "glue-pipeline-gold-dev"
+          }
+        },
+        "ResultPath": "$.gold_result",
+        "Next": "Notify Success",
+        "Catch": [
+          {
+            "ErrorEquals": ["States.ALL"],
+            "Next": "Notify Failure",
+            "ResultPath": "$.error"
+          }
+        ]
+      },
+  
+      "Notify Success": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "arn:aws:sns:ap-southeast-2:600868920829:data-pipeline-alerts-dev",
+          "Subject": "[AQ Pipeline] Pipeline completed successfully",
+          "Message.$": "States.Format('Pipeline ran successfully!\n\nDQ Checks: {}/{} passed\nGold tables updated: gold_aqi_daily_summary, gold_aqi_city_ranking\n\nTime: {}', $.dq_result.checks_passed, $.dq_result.checks_total, $$.Execution.StartTime)"
+        },
+        "Next": "Pipeline Complete"
+      },
+  
+      "Notify DQ Failure": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "arn:aws:sns:ap-southeast-2:600868920829:data-pipeline-alerts-dev",
+          "Subject": "[AQ Pipeline] Data Quality Check FAILED — Gold Job stopped",
+          "Message.$": "States.Format('DQ checks FAILED: {}/{} passed\nGold Job was not executed.\n\nCheck Lambda logs for details.', $.dq_result.checks_passed, $.dq_result.checks_total)"
+        },
+        "Next": "Pipeline Failed"
+      },
+  
+      "Notify Failure": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "arn:aws:sns:ap-southeast-2:600868920829:data-pipeline-alerts-dev",
+          "Subject": "[AQ Pipeline] Pipeline FAILED",
+          "Message.$": "States.Format('Pipeline failed!\n\nError: {}\n\nTime: {}', $.error.Cause, $$.Execution.StartTime)"
+        },
+        "Next": "Pipeline Failed"
+      },
+  
+      "Pipeline Complete": {
+        "Type": "Succeed"
+      },
+  
+      "Pipeline Failed": {
+        "Type": "Fail",
+        "Error": "PipelineFailed",
+        "Cause": "Pipeline failed — check SNS notification for details"
+      }
+  
+    }
+  }
