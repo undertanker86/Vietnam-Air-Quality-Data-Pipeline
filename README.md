@@ -340,10 +340,6 @@ for db in bronze silver gold; do
     --region ap-southeast-2
 done
 ```
-
-### 2.1 Run Glue Crawler for Bronze CSV
-Create and run a Glue Crawler for `s3://data-pipeline-bronze-ap-dev/historical_csv/`
-
 ### 3. Upload Glue Job Scripts to S3
 
 ```bash
@@ -388,7 +384,7 @@ Create each job in Glue Console with the following job parameters:
 --gold_bucket       data-pipeline-gold-ap-dev
 --gold_database     glue-pipeline-gold-dev
 ```
-### 4.1 Run manually "bronze_to_silver_statistics_csv" job
+
 ### 5. Deploy Lambda Functions
 
 **lambda_waqi_ingestion** — Environment variables:
@@ -410,8 +406,10 @@ DQ_FRESHNESS_HOURS      = 48
 DQ_SAMPLE_ROWS          = 1000
 ```
 
-### 5.1 Run Lambda and Create API Crawler
-Run `lambda_waqi_ingestion` and then create/run a Glue Crawler for `s3://data-pipeline-bronze-ap-dev/api_raw/`
+### 5.1 Run Lambda and Create Crawler
+Run `lambda_waqi_ingestion` and then create/run a Glue Crawler for `s3://data-pipeline-bronze-ap-dev`
+
+### Note: Run manually "bronze_to_silver_statistics_csv" job
 
 ### 6. Configure EventBridge Schedules
 
