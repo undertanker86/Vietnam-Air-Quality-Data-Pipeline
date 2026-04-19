@@ -294,3 +294,4 @@ logger.info(f"Flag written: s3://{SILVER_BUCKET}/{FLAG_KEY}")
 
 job.commit()
 logger.info("Job CSV → Silver complete.")
+

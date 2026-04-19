@@ -359,3 +359,7 @@ def lambda_handler(event, context):
         "database":       DATABASE,
         "details":        json.loads(json.dumps(all_results, default=str)),
     }
+
+
+
+

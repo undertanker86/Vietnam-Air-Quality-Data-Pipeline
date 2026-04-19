@@ -302,3 +302,18 @@ logger.info(f"fact_aqi written: {fact_aqi.count()} rows")
 
 job.commit()
 logger.info("Job API JSON -> Silver complete.")
+
+
+
+# Prepare partition keys
+fact_aqi = df_final.withColumn("year", F.year("measured_at").cast("string")) \
+                   .withColumn("month", F.lpad(F.month("measured_at"), 2, "0"))
+
+# Write to S3 Silver with 'dynamic' partition overwrite mode
+sink_fact = glueContext.getSink(
+    connection_type="s3",
+    path=FACT_AQI_PATH,
+    partitionKeys=["queried_city", "year", "month"]
+)
+sink_fact.setCatalogInfo(catalogDatabase=SILVER_DB, catalogTableName="fact_aqi")
+sink_fact.writeFrame(DynamicFrame.fromDF(fact_aqi, glueContext, "fact_aqi"))
