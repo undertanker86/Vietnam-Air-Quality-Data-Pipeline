@@ -71,9 +71,13 @@ logger.info("Building Gold: gold_aqi_daily_summary...")
 dominant_daily = df.groupBy("queried_city", "date", "dominant_pollutant") \
     .agg(F.count("*").alias("pollutant_count"))
 
+# w_dominant = Window.partitionBy("queried_city", "date") \
+#     .orderBy(F.col("pollutant_count").desc())
 w_dominant = Window.partitionBy("queried_city", "date") \
-    .orderBy(F.col("pollutant_count").desc())
-
+    .orderBy(
+        F.col("pollutant_count").desc(), 
+        F.col("dominant_pollutant").asc() # If count are equal, choose by alphabetical order (PM10 > PM2.5)
+    )
 dominant_daily = dominant_daily \
     .withColumn("_rank", F.row_number().over(w_dominant)) \
     .filter(F.col("_rank") == 1) \
